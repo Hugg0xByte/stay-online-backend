@@ -6,7 +6,6 @@ import com.stayonline.adapter.inbound.rest.dto.CreatePurchaseRequest;
 import com.stayonline.adapter.inbound.rest.dto.PurchaseResponse;
 import com.stayonline.application.usecase.CreatePurchaseUseCase;
 import com.stayonline.application.usecase.ListUserPurchasesUseCase;
-import com.stayonline.domain.model.Purchase;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,8 +27,8 @@ public class PurchaseController {
 
     @PostMapping("/purchases")
     public PurchaseResponse create(@RequestBody CreatePurchaseRequest req) {
-        Purchase p = createPurchase.execute(req.userId(), req.packageId());
-        return PurchaseResponse.from(p);
+        var result = createPurchase.execute(req.userId(), req.packageId());
+        return PurchaseResponse.from(result.getPurchase(), result.getUnsignedXdr());
     }
 
     @GetMapping("/users/{userId}/purchases")

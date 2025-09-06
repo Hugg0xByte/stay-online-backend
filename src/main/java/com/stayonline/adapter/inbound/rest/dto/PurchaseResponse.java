@@ -11,9 +11,29 @@ public record PurchaseResponse(
         String packageId,
         Instant createdAt,
         PurchaseStatus status,
-        String stellarTx) {
-    public static PurchaseResponse from(Purchase p) {
-        return new PurchaseResponse(p.getId(), p.getUserId(), p.getPackageId(), p.getCreatedAt(), p.getStatus(),
-                p.getStellarTx());
+        String txHash,
+        String unsignedXdr // Novo campo para o XDR
+) {
+    public static PurchaseResponse from(Purchase purchase) {
+        return new PurchaseResponse(
+                purchase.getId(),
+                purchase.getUserId(),
+                purchase.getPackageId(),
+                purchase.getCreatedAt(),
+                purchase.getStatus(),
+                purchase.getStellarTx(),
+                null // XDR será null para purchases existentes
+        );
+    }
+
+    public static PurchaseResponse from(Purchase purchase, String unsignedXdr) {
+        return new PurchaseResponse(
+                purchase.getId(),
+                purchase.getUserId(),
+                purchase.getPackageId(),
+                purchase.getCreatedAt(),
+                purchase.getStatus(),
+                purchase.getStellarTx(),
+                unsignedXdr);
     }
 }
