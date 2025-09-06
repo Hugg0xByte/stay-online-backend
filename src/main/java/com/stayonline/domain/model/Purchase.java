@@ -1,4 +1,4 @@
-package com.stayoline.domain.model;
+package com.stayonline.domain.model;
 
 import java.time.Instant;
 
