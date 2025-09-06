@@ -10,9 +10,9 @@ stellar:
   network-passphrase: "Test SDF Network ; September 2015"   # TESTNET
   horizon-url: "https://horizon-testnet.stellar.org"
   soroban-rpc-url: "https://soroban-testnet.stellar.org"    # ou http://localhost:8000/soroban/rpc no localnet
-  contract-address: "C...SEU_CONTRATO"
+  contract-address: "CCKJAFWTLTJ2NDODMAXWNU35CKBEP4VLVMOI4IP3YFXERQMWWAWNWF5V"
   admin-secret-key: "S...SEU_ADMIN"
-  token-asset-address: "C...TOKEN_OPCIONAL"
+  token-asset-address: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 
 
 # Swagger/OpenAPI
