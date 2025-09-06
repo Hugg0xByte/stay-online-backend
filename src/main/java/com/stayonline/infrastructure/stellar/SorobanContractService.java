@@ -1,9 +1,12 @@
 package com.stayonline.infrastructure.stellar;
 
-import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.stellar.sdk.Address;
 import org.stellar.sdk.Network;
@@ -13,15 +16,11 @@ import org.stellar.sdk.Transaction;
 import org.stellar.sdk.TransactionBuilder;
 import org.stellar.sdk.TransactionBuilderAccount;
 import org.stellar.sdk.operations.InvokeHostFunctionOperation;
-import org.stellar.sdk.scval.Scv;
-import org.stellar.sdk.xdr.HostFunction;
-import org.stellar.sdk.xdr.HostFunctionType;
-import org.stellar.sdk.xdr.InvokeContractArgs;
-import org.stellar.sdk.xdr.SCSymbol;
 import org.stellar.sdk.xdr.SCVal;
 import org.stellar.sdk.xdr.SCValType;
+import org.stellar.sdk.xdr.SorobanAuthorizationEntry;
 import org.stellar.sdk.xdr.Uint32;
-import org.stellar.sdk.xdr.XdrString;
+import org.stellar.sdk.xdr.XdrDataInputStream;
 import org.stellar.sdk.xdr.XdrUnsignedInteger;
 
 /**
@@ -31,7 +30,6 @@ import org.stellar.sdk.xdr.XdrUnsignedInteger;
 @Service
 public class SorobanContractService {
 
-    @Autowired
     private final StellarConfig stellarConfig;
     private final Server horizon; // Horizon p/ contas e sequência
     private final SorobanServer soroban; // Soroban RPC
@@ -62,7 +60,7 @@ public class SorobanContractService {
 
         // 1) Argumentos do contrato
         SCVal ownerArg = new Address(ownerAccountId).toSCVal();
-        SCVal pkgArg = Scv.toInt32(packageId);
+        SCVal pkgArg = u32(packageId);
 
         // 2) Operação de invocação (ajuste para usar seu helper se preferir)
         InvokeHostFunctionOperation op = InvokeHostFunctionOperation
@@ -71,38 +69,77 @@ public class SorobanContractService {
                 .build();
 
         // 3) Monta a transação (apenas UMA vez) — não assina
-        Transaction tx = new TransactionBuilder(source, network)
+        Transaction toSimulate = new TransactionBuilder(source, network)
                 .addOperation(op)
                 .setBaseFee(100) // base fee; resource fee virá do prepare
                 .setTimeout(120)
                 .build();
 
+        // 4) Simula → coleta possíveis authorizations exigidas pelo contrato/SAC
+        var simulation = soroban.simulateTransaction(toSimulate);
+        if (simulation.getError() != null) {
+            throw new RuntimeException("simulate error: " + simulation.getError());
+        }
+
+        List<SorobanAuthorizationEntry> authorizations = Collections.emptyList();
+        if (Objects.nonNull(simulation.getResults()) && !simulation.getResults().isEmpty()
+                && simulation.getResults().get(0).getAuth() != null
+                && !simulation.getResults().get(0).getAuth().isEmpty()) {
+            var authB64 = simulation.getResults().get(0).getAuth();
+            authorizations = decodeAuthBase64(authB64);
+        } else {
+            throw new RuntimeException("No authorizations found");
+        }
+
+        // 5) Recria a operação COM auth (se houver)
+        var opBuilder = InvokeHostFunctionOperation
+                .invokeContractFunctionOperationBuilder(stellarConfig.getContractAddress(), "buy_order",
+                        List.of(ownerArg, pkgArg));
+
+        if (!authorizations.isEmpty()) {
+            opBuilder.auth(authorizations);
+        }
+        var operation = opBuilder.build();
+
+        // 6) Recarrega a conta para não queimar a sequence
+        source = soroban.getAccount(ownerAccountId);
+
+        // 7) Prepara (injeta sorobanData + resource fee). Ainda SEM assinar.
+        var unsigned = new TransactionBuilder(source, network)
+                .addOperation(op)
+                .setBaseFee(100)
+                .setTimeout(120)
+                .build();
+
+        unsigned = soroban.prepareTransaction(unsigned);
+
+        // 8) Retorna XDR base64 NÃO ASSINADO (front assina e envia)
+        return unsigned.toEnvelopeXdrBase64();
+
         // 4) Prepara (simula + injeta SorobanTransactionData + resource fee)
-        tx = soroban.prepareTransaction(tx);
+        // toSimulate = soroban.prepareTransaction(toSimulate);
 
         // 5) Retorna XDR base64 não assinado (o front assina e envia)
-        return tx.toEnvelopeXdrBase64();
+        // return toSimulate.toEnvelopeXdrBase64();
     }
 
     // -------------------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------------------
-    private InvokeHostFunctionOperation buildInvokeOperation(String fnName, List<SCVal> args) {
-        Address contract = new Address(stellarConfig.getContractAddress());
 
-        return InvokeHostFunctionOperation.builder()
-                .hostFunction(HostFunction.builder()
-                        .discriminant(HostFunctionType.HOST_FUNCTION_TYPE_INVOKE_CONTRACT)
-                        .invokeContract(InvokeContractArgs.builder()
-                                .contractAddress(contract.toSCAddress())
-                                .functionName(sym(fnName))
-                                .args(args.toArray(new SCVal[0]))
-                                .build())
-                        .build())
-                .build();
+    private static List<SorobanAuthorizationEntry> decodeAuthBase64(List<String> authB64) throws Exception {
+        if (authB64 == null || authB64.isEmpty())
+            return Collections.emptyList();
+        List<SorobanAuthorizationEntry> out = new ArrayList<>(authB64.size());
+        for (String b64 : authB64) {
+            byte[] bytes = Base64.getDecoder().decode(b64);
+            try (XdrDataInputStream xin = new XdrDataInputStream(new ByteArrayInputStream(bytes))) {
+                out.add(SorobanAuthorizationEntry.decode(xin));
+            }
+        }
+        return out;
     }
 
-    // SCVal U32 (SDK sem builder() no Uint32)
     private static SCVal u32(int v) {
         Uint32 u = new Uint32();
         u.setUint32(new XdrUnsignedInteger(v));
@@ -111,16 +148,5 @@ public class SorobanContractService {
         sc.setDiscriminant(SCValType.SCV_U32);
         sc.setU32(u);
         return sc;
-    }
-
-    // SCSymbol (SDK sem builder(); usa XdrString + setSCSymbol)
-    private static SCSymbol sym(String name) {
-        byte[] bytes = name.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > 32) {
-            throw new IllegalArgumentException("symbol too long (max 32 bytes): " + name);
-        }
-        SCSymbol s = new SCSymbol();
-        s.setSCSymbol(new XdrString(bytes)); // se seu XdrString aceitar String, pode usar new XdrString(name)
-        return s;
     }
 }
