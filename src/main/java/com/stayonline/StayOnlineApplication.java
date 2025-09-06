@@ -4,9 +4,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class StayOlineApplication {
+public class StayOnlineApplication {
     public static void main(String[] args) {
-        SpringApplication.run(StayOlineApplication.class, args);
+        SpringApplication.run(StayOnlineApplication.class, args);
     }
     // @Bean public PackageRepository packageRepository() { return new
     // InMemoryPackageRepository().seedDefaults(); }
