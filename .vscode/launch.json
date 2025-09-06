@@ -9,6 +9,16 @@
             "projectName": "stay-oline-backend",
             "args": "",
             "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-StayOnlineApplication<stay-oline-backend>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.stayonline.StayOnlineApplication",
+            "projectName": "stay-oline-backend",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
         }
     ]
 }
